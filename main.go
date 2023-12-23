@@ -1,14 +1,21 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
+	"github.com/budiharyonoo/rss-aggregator/internal/database"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
+
+	_ "github.com/lib/pq"
 )
+
+type apiConfig struct {
+	DB *database.Queries
+}
 
 func main() {
 	err := godotenv.Load()
@@ -23,7 +30,20 @@ func main() {
 		return
 	}
 
-	fmt.Println("Port:", port)
+	dbUrl := os.Getenv("DB_URL")
+	if dbUrl == "" {
+		log.Fatalln("DB_URL is not bound in the .env file")
+		return
+	}
+
+	// Open DB Connection
+	dbConn, err := sql.Open("postgres", dbUrl)
+	if err != nil {
+		log.Fatal("DB connection error", err)
+		return
+	}
+
+	apiCfg := apiConfig{DB: database.New(dbConn)}
 
 	// Init Chi Router
 	router := chi.NewRouter()
@@ -42,6 +62,14 @@ func main() {
 	v1Router := chi.NewRouter()
 	v1Router.Get("/healthz", handlerReadiness)
 	v1Router.Get("/error", handlerError)
+
+	// v1/user
+	v1Router.Post("/user", apiCfg.handlerCreateUser)
+	v1Router.Get("/user", apiCfg.middlewareAuth(apiCfg.handlerGetUser))
+
+	// v1/feed
+	v1Router.Post("/feed", apiCfg.middlewareAuth(apiCfg.handlerCreateFeed))
+
 	router.Mount("/v1", v1Router)
 
 	// Init server
