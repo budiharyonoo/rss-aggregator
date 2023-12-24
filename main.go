@@ -6,11 +6,11 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"log"
 	"net/http"
 	"os"
-
-	_ "github.com/lib/pq"
+	"time"
 )
 
 type apiConfig struct {
@@ -43,7 +43,11 @@ func main() {
 		return
 	}
 
-	apiCfg := apiConfig{DB: database.New(dbConn)}
+	db := database.New(dbConn)
+	apiCfg := apiConfig{DB: db}
+
+	// Run scheduler scrapping RSS Feed
+	go startScrapping(db, 10, time.Minute)
 
 	// Init Chi Router
 	router := chi.NewRouter()
@@ -68,7 +72,16 @@ func main() {
 	v1Router.Get("/user", apiCfg.middlewareAuth(apiCfg.handlerGetUser))
 
 	// v1/feed
+	v1Router.Get("/feed", apiCfg.handlerGetFeed)
 	v1Router.Post("/feed", apiCfg.middlewareAuth(apiCfg.handlerCreateFeed))
+
+	// v1/feed-follows
+	v1Router.Get("/feed-follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
+	v1Router.Post("/feed-follows", apiCfg.middlewareAuth(apiCfg.handlerCreateFeedFollows))
+	v1Router.Delete("/feed-follows/{feedFollowId}", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollows))
+
+	// v1/post
+	v1Router.Get("/post", apiCfg.middlewareAuth(apiCfg.handlerGetPostByUserId))
 
 	router.Mount("/v1", v1Router)
 
